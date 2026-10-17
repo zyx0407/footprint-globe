@@ -332,12 +332,12 @@ html[data-theme="night"] .sug{box-shadow:0 10px 30px rgba(0,0,0,.5)}
     <p class="coord"><span id="editCoord">—</span><button class="link-btn mini" type="button" id="pickOnGlobe">在地球上选点</button></p>
     <label class="field"><span>搜地名 · <span id="presetCount">—</span> 个城市</span>
       <div class="sug-wrap">
-        <input id="fSearch" autocomplete="off" placeholder="中文或拼音，如 洛阳 / Luoyang">
+        <input id="fSearch" autocomplete="off" placeholder="中文或拼音，如 北京 / Beijing">
         <ul class="sug" id="sug" hidden></ul>
       </div>
     </label>
-    <label class="field"><span>地名</span><input id="fName" maxlength="20" autocomplete="off" placeholder="新乡"></label>
-    <label class="field"><span>年月</span><input id="fDate" type="month"></label>
+    <label class="field"><span>地名</span><input id="fName" maxlength="20" autocomplete="off" placeholder="北京"></label>
+    <label class="field"><span>年月 · 选填</span><input id="fDate" type="text" autocomplete="off" placeholder="2024 / 2024.05 / 2024.05.20，可留空"></label>
     <label class="field"><span>一句话</span><textarea id="fNote" rows="2" maxlength="120" placeholder="选填"></textarea></label>
     <div class="dialog-foot">
       <span class="hint" id="editHint"></span>
@@ -949,10 +949,7 @@ html[data-theme="night"] .sug{box-shadow:0 10px 30px rgba(0,0,0,.5)}
   const HAND = '"FangSong","仿宋","Noto Serif SC",serif';
 
   const DEMO = [
-    { name: '北京', date: '2019.07', lat: 39.90, lon: 116.41, note: '示例地点，点「清空示例」或直接记一个真的。', tag: '示例', demo: true },
-    { name: '成都', date: '2021.10', lat: 30.57, lon: 104.07, note: '', tag: '示例', demo: true },
-    { name: '厦门', date: '2022.06', lat: 24.48, lon: 118.09, note: '', tag: '示例', demo: true },
-    { name: '拉萨', date: '2023.08', lat: 29.65, lon: 91.14, note: '', tag: '示例', demo: true }
+    { name: '北京', date: '', lat: 39.90, lon: 116.41, note: '示例地点。年月可以不填；填 2024、2024.05 或 2024.05.20 都行。', tag: '示例', demo: true }
   ];
 
   const RAD = Math.PI / 180;
@@ -987,7 +984,7 @@ html[data-theme="night"] .sug{box-shadow:0 10px 30px rgba(0,0,0,.5)}
     pointer: null, proj: new Map(),
     poster: null, draft: null
   };
-  const view = { lon: 108, lat: 26, zoom: 1, mom: null };
+  const view = { lon: 116.4, lat: 34, zoom: 1, mom: null };
 
   /* ============ 存取 ============ */
   function readStore() {
@@ -1006,13 +1003,26 @@ html[data-theme="night"] .sug{box-shadow:0 10px 30px rgba(0,0,0,.5)}
     return {
       id: p.id || uid(),
       name: String(p.name || '').slice(0, 20),
-      date: String(p.date || '').slice(0, 10),
+      date: normalizeDate(p.date) || '',
       lat: clamp(Number(p.lat) || 0, -90, 90),
       lon: normLon(Number(p.lon) || 0),
       note: String(p.note || '').slice(0, 120),
       tag: String(p.tag || '').slice(0, 6),
       demo: !!p.demo
     };
+  }
+  /* 年月是选填：2024 / 2024.05 / 2024.05.20 都收，也收 - 和 / 分隔；空着返回 '' */
+  function normalizeDate(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s) return '';
+    const m = /^(\d{4})(?:[.\-/年](\d{1,2}))?(?:[.\-/月](\d{1,2}))?日?$/.exec(s);
+    if (!m) return null;
+    const y = +m[1], mo = m[2] ? +m[2] : 0, da = m[3] ? +m[3] : 0;
+    if (y < 1900 || y > 2100 || mo > 12 || da > 31) return null;
+    let out = String(y);
+    if (mo) out += '.' + String(mo).padStart(2, '0');
+    if (da) out += '.' + String(da).padStart(2, '0');
+    return out;
   }
 
   /* ============ 分享：只分享这个网页本身，不带任何地点信息 ============ */
@@ -1467,7 +1477,7 @@ html[data-theme="night"] .sug{box-shadow:0 10px 30px rgba(0,0,0,.5)}
     el.editKicker.textContent = place ? 'edit footprint' : 'footprint';
     el.editCoord.textContent = state.editing ? coordText(state.editing.lat, state.editing.lon) : '还没选位置';
     el.fName.value = place ? place.name : (draft ? draft.name : '');
-    el.fDate.value = place && place.date ? place.date.replace('.', '-') : (draft ? draft.date : '');
+    el.fDate.value = place && place.date ? place.date : (draft ? draft.date : '');
     el.fNote.value = place ? place.note : (draft ? draft.note : '');
     el.fSearch.value = '';
     hideSug();
@@ -1490,8 +1500,13 @@ html[data-theme="night"] .sug{box-shadow:0 10px 30px rgba(0,0,0,.5)}
       el.fSearch.focus();
       return;
     }
-    const raw = el.fDate.value;
-    const fields = { name: name, date: raw ? raw.replace('-', '.') : '', note: el.fNote.value.trim(), lat: state.editing.lat, lon: state.editing.lon };
+    const date = normalizeDate(el.fDate.value);
+    if (date === null) {
+      el.editHint.textContent = '年月写 2024、2024.05 或 2024.05.20 都行，也可以不填。';
+      el.fDate.focus();
+      return;
+    }
+    const fields = { name: name, date: date, note: el.fNote.value.trim(), lat: state.editing.lat, lon: state.editing.lon };
     let targetId = editingId;
     if (targetId) {
       const target = state.places.find((p) => p.id === targetId);
@@ -1632,7 +1647,7 @@ html[data-theme="night"] .sug{box-shadow:0 10px 30px rgba(0,0,0,.5)}
 
     drawGlobe({
       ctx: g, W: PW, H: PH, CX: PW / 2, CY: 760, R: 330,
-      view: { lon: 108, lat: 26, zoom: 1 }, pal: p, places: [], tags: false, sel: null, hov: null
+      view: { lon: 116.4, lat: 34, zoom: 1 }, pal: p, places: [], tags: false, sel: null, hov: null
     });
 
     g.strokeStyle = rgba(p.ink, 0.18); g.lineWidth = 1.5;
