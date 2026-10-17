@@ -1,5 +1,7 @@
 # 足迹地球 · Footprint Globe
 
+[English](README.en.md) · 简体中文
+
 把去过的地方，收成一颗地球。
 
 在线地址 → <https://work2.zyx0407.com/>
